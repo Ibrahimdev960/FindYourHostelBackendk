@@ -1,3 +1,5 @@
+// models/userModel.js
+
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
@@ -14,6 +16,8 @@ const userSchema = new mongoose.Schema({
     enum: ['Hosteller', 'Hostellite', 'Admin'],
     required: true,
   },
+  isVerified: { type: Boolean, default: false },
+  emailToken: { type: String },
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);
