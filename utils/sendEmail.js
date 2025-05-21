@@ -20,6 +20,9 @@ const sendVerificationEmail = async (to, token) => {
     html: `<p>Please verify your email by clicking the link below:</p>
            <a href="${verificationLink}">Verify Email</a>`,
   };
+console.log('Sending email to:', to);
+console.log('Verification link:', verificationLink);
+await transporter.sendMail(mailOptions);
 
   await transporter.sendMail(mailOptions);
 };
