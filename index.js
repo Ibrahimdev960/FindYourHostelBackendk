@@ -53,7 +53,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/hostels', hostelRoutes);
 app.use('/api/bookings', bookingRoutes);
-app.use("/api/reviews", reviewRoutes);
+app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/rooms', roomRoutes); // Add this line to use room routes
 

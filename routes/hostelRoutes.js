@@ -6,7 +6,8 @@ const {
     deleteHostel, 
     getAllHostels, 
     getHostelById,
-    searchHostels , approveHostel , rejectHostel ,getPendingHostels,getHostelCount 
+    searchHostels , approveHostel , rejectHostel ,getPendingHostels,getHostelCount, 
+    getHostelsNearby
 } = require('../controllers/hostelController');
 const multer = require('multer'); // ✅ Required import
 const { storage } = require('../config/cloudinary');
@@ -24,9 +25,8 @@ router.get('/all', protect,getAllHostels);
 router.get('/search', searchHostels);
 router.get('/pending', protect, adminAuth, getPendingHostels);
 router.get('/count', protect, adminAuth, getHostelCount);
-
-
 router.get('/:id', getHostelById);
+router.get('/owner/:id', protect, getHostelsNearby); // Get hostel by owner ID
 
 
 router.patch('/approve/:id', protect, adminAuth, approveHostel);

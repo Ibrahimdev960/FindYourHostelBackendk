@@ -1,11 +1,18 @@
-const express = require("express");
-const router = express.Router();
-const reviewController = require("../controllers/reviewController");
+const express = require('express');
+const { protect } = require('../middleware/authMiddleware');
+const {
+  createReview,
+  getHostelReviews,
+  getUserReviews,getEligibleBookings
+} = require('../controllers/reviewController');
 
-// ✅ **Use Controller Methods**
-router.post("/add", reviewController.addReview);
-router.get("/:hostelId", reviewController.getHostelReviews);
-router.put("/update/:id", reviewController.updateReview);
-router.delete("/delete/:id", reviewController.deleteReview);
+const router = express.Router();
+
+router.post('/add', protect, createReview);              // POST /api/reviews/add
+router.get('/:hostelId', getHostelReviews);              // GET /api/reviews/:hostelId
+router.get('/user/my', protect, getUserReviews);  
+router.get('/eligible-bookings/:hostelId', protect, getEligibleBookings);
+       // GET /api/reviews/user/my
+
 
 module.exports = router;

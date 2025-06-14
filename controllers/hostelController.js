@@ -4,69 +4,59 @@ const multer = require('multer');
 const { storage } = require('../config/cloudinary');
 const upload = multer({ storage });
 
+// Add Hostel
 const addHostel = async (req, res) => {
   try {
-    console.log('Starting addHostel process...');
-    console.log('Request body:', req.body);
-    console.log('Request files:', req.files);
-    console.log('Authenticated user:', req.user);
+    const { name, amenities, availability } = req.body;
+    let location;
 
-    const { name, location, amenities, availability } = req.body;
-
-    if (!name || !location) {
-      console.error('Validation failed: Name and location are required');
-      return res.status(400).json({ message: "Name and location are required" });
+    // Parse and validate location
+    try {
+      location = typeof req.body.location === 'string' 
+        ? JSON.parse(req.body.location) 
+        : req.body.location;
+    } catch (err) {
+      return res.status(400).json({ message: 'Invalid location format' });
     }
 
+    if (!name || !location || !location.coordinates || location.coordinates.length !== 2) {
+      return res.status(400).json({ message: 'Name and valid location coordinates are required' });
+    }
+
+    // Validate images
     if (!req.files || req.files.length === 0) {
-      console.error('Validation failed: No images uploaded');
       return res.status(400).json({ message: "At least one image is required" });
     }
 
     const allowedFormats = ['image/jpeg', 'image/png', 'image/jpg'];
     const invalidFiles = req.files.filter(file => !allowedFormats.includes(file.mimetype));
     if (invalidFiles.length > 0) {
-      console.error('Validation failed: Invalid file formats uploaded', invalidFiles);
       return res.status(400).json({ message: "Invalid file format. Only jpg, png, and jpeg are allowed." });
     }
-    
-    const imageUrls = req.files.map(file => file.path);
-    console.log('Processed image URLs:', imageUrls);
 
     const newHostel = new Hostel({
       name,
       location,
       amenities: amenities.split(',').map(item => item.trim()),
       availability,
-      images: imageUrls,
+      images: req.files.map(file => file.path),
       owner: req.user.id,
       status: 'pending'
     });
 
-    console.log('New hostel object created:', newHostel);
-    
     await newHostel.save();
-    console.log('Hostel saved successfully with ID:', newHostel._id);
 
     res.status(201).json({ 
       message: "Hostel added successfully and pending approval", 
       hostel: newHostel 
     });
+
   } catch (error) {
-    console.error("Error in addHostel:", {
-      message: error.message,
-      stack: error.stack,
-      requestBody: req.body,
-      requestFiles: req.files,
-      user: req.user
-    });
-    res.status(500).json({ 
-      message: "Error adding hostel",
-      error: error.message
-    });
+    res.status(500).json({ message: "Error adding hostel", error: error.message });
   }
 };
 
+// Update Hostel
 const updateHostel = async (req, res) => {
   try {
     console.log('Starting updateHostel process...');
@@ -74,25 +64,44 @@ const updateHostel = async (req, res) => {
     console.log('Request body:', req.body);
 
     const { id } = req.params;
-    const { name, location, amenities, availability } = req.body;
+    const { name, amenities, availability } = req.body;
+    let location;
 
+    // Validate ID
     if (!id) {
-      console.error('Validation failed: Hostel ID is required');
       return res.status(400).json({ message: "Hostel ID is required" });
     }
 
+    // Parse and validate location
+    try {
+      location = typeof req.body.location === 'string' 
+        ? JSON.parse(req.body.location) 
+        : req.body.location;
+    } catch (err) {
+      return res.status(400).json({ message: 'Invalid location format' });
+    }
+
+    if (!location || !location.coordinates || location.coordinates.length !== 2) {
+      return res.status(400).json({ message: 'Valid location coordinates are required' });
+    }
+
+    const updateFields = {
+      ...(name && { name }),
+      location,
+      ...(amenities && { amenities: amenities.split(',').map(item => item.trim()) }),
+      ...(availability && { availability })
+    };
+
     const updatedHostel = await Hostel.findByIdAndUpdate(
       id,
-      { name, location, amenities, availability },
+      updateFields,
       { new: true, runValidators: true }
     );
 
     if (!updatedHostel) {
-      console.error('Hostel not found with ID:', id);
       return res.status(404).json({ message: "Hostel not found" });
     }
 
-    console.log('Hostel updated successfully:', updatedHostel);
     res.status(200).json({ message: "Hostel updated successfully", hostel: updatedHostel });
 
   } catch (error) {
@@ -105,6 +114,7 @@ const updateHostel = async (req, res) => {
     res.status(500).json({ message: "Error updating hostel", error: error.message });
   }
 };
+
 
 const deleteHostel = async (req, res) => {
   try {
@@ -203,43 +213,24 @@ const getPendingHostels = async (req, res) => {
 };
 
 const getHostelById = async (req, res) => {
-  try {
-    console.log('Starting getHostelById process...');
-    console.log('Hostel ID:', req.params.id);
-    console.log('User making request:', req.user);
+ try {
+      const hostel = await Hostel.findById(req.params.id);
+      if (!hostel) {
+        return res.status(404).json({ message: 'Hostel not found' });
+      }
 
-    const hostel = await Hostel.findById(req.params.id);
-    if (!hostel) {
-      console.error('Hostel not found with ID:', req.params.id);
-      return res.status(404).json({ message: 'Hostel not found' });
+      if (hostel.status !== 'approved' && 
+          (!req.user || 
+           (req.user.role !== 'Admin' && 
+            (req.user.role !== 'Hosteller' || hostel.owner.toString() !== req.user.id.toString())))) {
+        return res.status(403).json({ message: 'Unauthorized to view this hostel' });
+      }
+
+      const rooms = await Room.find({ hostel: hostel._id });
+      res.json({ hostel, rooms });
+    } catch (error) {
+      res.status(500).json({ message: 'Error fetching hostel', error });
     }
-
-    // Check if user can view this hostel
-    if (hostel.status !== 'approved' && 
-        (!req.user || 
-         (req.user.role !== 'Admin' && 
-          (req.user.role !== 'Hosteller' || hostel.owner.toString() !== req.user.id.toString())))) {
-      console.error('Unauthorized access attempt to hostel:', {
-        hostelStatus: hostel.status,
-        userId: req.user?.id,
-        userRole: req.user?.role,
-        hostelOwner: hostel.owner
-      });
-      return res.status(403).json({ message: 'Unauthorized to view this hostel' });
-    }
-
-    const rooms = await Room.find({ hostel: hostel._id });
-    console.log('Successfully retrieved hostel and rooms:', { hostel, rooms });
-    res.json({ hostel, rooms });
-  } catch (error) {
-    console.error('Error in getHostelById:', {
-      message: error.message,
-      stack: error.stack,
-      params: req.params,
-      user: req.user
-    });
-    res.status(500).json({ message: 'Error fetching hostel', error });
-  }
 };
 
 const getAllHostels = async (req, res) => {
@@ -339,6 +330,35 @@ getHostelCount = async (req, res) => {
   }
 };
 
+// Get hostels near a location
+getHostelsNearby =  async (req, res) => {
+  try {
+    const { longitude, latitude, maxDistance = 5000 } = req.query;
+    
+    if (!longitude || !latitude) {
+      return res.status(400).json({ message: 'Longitude and latitude are required' });
+    }
+
+    const hostels = await Hostel.find({
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [parseFloat(longitude), parseFloat(latitude)]
+          },
+          $maxDistance: parseInt(maxDistance)
+        }
+      },
+      status: 'approved'
+    });
+
+    res.json(hostels);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
 
 module.exports = {
   addHostel,
@@ -350,5 +370,6 @@ module.exports = {
   approveHostel,
   rejectHostel,
   getPendingHostels,
-  getHostelCount
+  getHostelCount,
+  getHostelsNearby
 };

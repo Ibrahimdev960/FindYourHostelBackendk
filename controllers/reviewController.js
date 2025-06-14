@@ -1,101 +1,116 @@
-const Review = require("../models/Review");
-const Booking = require("../models/bookingModel");
-const { sendNotification } = require("../controllers/notificationController"); // Import Notification
+const Review = require('../models/Review');
+const Booking = require('../models/bookingModel');
+const Hostel = require('../models/hostelModel');
 
-// ✅ **1. Add Review (Only if user booked the hostel)**
-exports.addReview = async (req, res) => {
+// ⭐ Create Review
+const createReview = async (req, res) => {
+  const { hostelId, bookingId, rating, title, comment } = req.body;
+  const userId = req.user.id;
+
   try {
-    const { userId, hostelId, rating, comment } = req.body;
+    // Validate Booking
+    const booking = await Booking.findOne({
+      _id: bookingId,
+      hostel: hostelId,
+      user: userId,
+      paymentStatus: 'completed',
+      status: { $in: ['confirmed', 'completed'] }
+    });
 
-    // 🔥 Ensure user booked this hostel
-    const bookingExists = await Booking.findOne({ userId, hostelId });
-    if (!bookingExists) {
-      return res.status(403).json({ message: "You can only review hostels you have booked" });
+    if (!booking) {
+      return res.status(400).json({ message: 'You can only review a hostel you have completed a booking for' });
     }
 
-    // 📝 Create and save review
-    const review = new Review({ userId, hostelId, rating, comment });
+    // Prevent duplicate review
+    const alreadyReviewed = await Review.findOne({ user: userId, hostel: hostelId, booking: bookingId });
+    if (alreadyReviewed) {
+      return res.status(400).json({ message: 'You have already reviewed this hostel for this booking' });
+    }
+
+    const review = new Review({
+      user: userId,
+      hostel: hostelId,
+      booking: bookingId,
+      rating,
+      title,
+      comment
+    });
+
     await review.save();
 
-    // ✅ Send Notification to Hostel Owner
-    sendNotification(bookingExists.hostel.ownerId, `New review added for your hostel by User ID: ${userId}`, "Review");
-
-    res.status(201).json({ message: "Review added successfully", review });
-
+    res.status(201).json({ message: 'Review submitted successfully', review });
   } catch (error) {
-    console.error("Add Review Error:", error);
-    res.status(500).json({ message: "Error adding review", error: error.message });
+    console.error('Error creating review:', error);
+    res.status(500).json({ message: 'Failed to submit review', error: error.message });
   }
 };
 
-// ✅ **2. Get All Reviews for a Hostel**
-exports.getHostelReviews = async (req, res) => {
+// ⭐ Get All Reviews for a Hostel
+const getHostelReviews = async (req, res) => {
   try {
-    const { hostelId } = req.params;
-    const reviews = await Review.find({ hostelId }).populate("userId", "name");
-    res.status(200).json(reviews);
+    const reviews = await Review.find({ hostel: req.params.hostelId })
+      .populate('user', 'name')
+      .sort({ createdAt: -1 });
+
+    res.json(reviews);
   } catch (error) {
-    console.error("Fetch Reviews Error:", error);
-    res.status(500).json({ message: "Error fetching reviews", error: error.message });
+    res.status(500).json({ message: 'Error fetching reviews', error: error.message });
   }
 };
 
-// ✅ **3. Update Review**
-exports.updateReview = async (req, res) => {
+// ⭐ Get Reviews by Logged-in User
+const getUserReviews = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { userId, rating, comment } = req.body;
+    const reviews = await Review.find({ user: req.user.id })
+      .populate('hostel', 'name')
+      .sort({ createdAt: -1 });
 
-    const review = await Review.findById(id);
-    if (!review) {
-      return res.status(404).json({ message: "Review not found" });
+    res.json(reviews);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching user reviews', error: error.message });
+  }
+};
+
+// ⭐ Hostel Owner Responds to Review
+const respondToReview = async (req, res) => {
+  try {
+    const review = await Review.findById(req.params.id).populate('hostel');
+
+    if (!review) return res.status(404).json({ message: 'Review not found' });
+
+    // Check owner authorization
+    if (review.hostel.owner.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'You are not authorized to respond to this review' });
     }
 
-    // 🔥 Ensure only the review owner can update
-    if (review.userId.toString() !== userId) {
-      return res.status(403).json({ message: "Unauthorized to update this review" });
-    }
-
-    review.rating = rating;
-    review.comment = comment;
+    review.response = req.body.response;
     await review.save();
 
-    // ✅ Send Notification to Hostel Owner
-    sendNotification(review.hostel.ownerId, `A review for your hostel has been updated by User ID: ${userId}`, "Review");
-
-    res.status(200).json({ message: "Review updated successfully", review });
-
+    res.json({ message: 'Response added', review });
   } catch (error) {
-    console.error("Update Review Error:", error);
-    res.status(500).json({ message: "Error updating review", error: error.message });
+    res.status(500).json({ message: 'Failed to respond to review', error: error.message });
+  }
+};
+// In your backend controller
+const getEligibleBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find({
+      user: req.user.id,
+      hostel: req.params.hostelId,
+      paymentStatus: 'completed',
+      _id: { $nin: await Review.distinct('booking', { user: req.user.id }) }
+    });
+    
+    res.json(bookings);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
 
-// ✅ **4. Delete Review**
-exports.deleteReview = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { userId } = req.body;
-
-    const review = await Review.findById(id);
-    if (!review) {
-      return res.status(404).json({ message: "Review not found" });
-    }
-
-    // 🔥 Ensure only the review owner can delete
-    if (review.userId.toString() !== userId) {
-      return res.status(403).json({ message: "Unauthorized to delete this review" });
-    }
-
-    await Review.findByIdAndDelete(id);
-
-    // ✅ Send Notification to Hostel Owner
-    sendNotification(review.hostel.ownerId, `A review for your hostel has been deleted by User ID: ${userId}`, "Review");
-
-    res.status(200).json({ message: "Review deleted successfully" });
-
-  } catch (error) {
-    console.error("Delete Review Error:", error);
-    res.status(500).json({ message: "Error deleting review", error: error.message });
-  }
+module.exports = {
+  createReview,
+  getHostelReviews,
+  getUserReviews,
+  respondToReview,
+  getEligibleBookings
 };
