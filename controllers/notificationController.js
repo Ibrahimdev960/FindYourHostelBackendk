@@ -1,32 +1,54 @@
 const Notification = require('../models/notificationModel');
 
-// Get Notifications for a User
+// Create a notification
+const sendNotification = async (userId, title, message, role) => {
+  try {
+    const notification = new Notification({
+      user: userId,
+      role,
+      title,
+      message
+    });
+    await notification.save();
+    return notification;
+  } catch (error) {
+    console.error('Error sending notification:', error.message);
+    throw error;
+  }
+};
+
+// Get notifications for logged-in user
 const getUserNotifications = async (req, res) => {
   try {
-    const notifications = await Notification.find({ userId: req.user.id }).sort({ createdAt: -1 });
-    res.status(200).json({ message: 'Notifications fetched successfully', notifications });
+    const notifications = await Notification.find({ user: req.user.id })
+      .sort({ createdAt: -1 });
+    res.status(200).json(notifications);
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Failed to fetch notifications', error: error.message });
   }
 };
 
-// Mark Notification as Read
+// Mark notification as read
 const markAsRead = async (req, res) => {
   try {
-    await Notification.findByIdAndUpdate(req.params.id, { isRead: true });
-    res.status(200).json({ message: 'Notification marked as read' });
+    const notification = await Notification.findById(req.params.id);
+    if (!notification) return res.status(404).json({ message: 'Notification not found' });
+
+    if (notification.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized access' });
+    }
+
+    notification.isRead = true;
+    await notification.save();
+
+    res.status(200).json({ message: 'Marked as read' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Failed to update notification', error: error.message });
   }
 };
 
-// Send Notification (For Booking, Review, Admin Updates)
-const sendNotification = async (userId, message, type) => {
-  try {
-    await Notification.create({ userId, message, type });
-  } catch (error) {
-    console.error('Error sending notification:', error);
-  }
+module.exports = {
+  sendNotification,
+  getUserNotifications,
+  markAsRead
 };
-
-module.exports = { getUserNotifications, markAsRead, sendNotification };

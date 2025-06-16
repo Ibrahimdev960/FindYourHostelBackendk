@@ -142,28 +142,17 @@ const getHostelOwnerBookings = async (req, res) => {
 
 // In your bookingController.js
 const getEligibleBookings = async (req, res) => {
-    console.log('✅ Route hit:', req.originalUrl);
-
   try {
-    console.log('Fetching eligible bookings for:', {
-      user: req.user.id,
-      hostel: req.params.hostelId
-    });
-
     const bookings = await Booking.find({
       user: req.user.id,
       hostel: req.params.hostelId,
-      paymentStatus: 'completed',
-      status: { $in: ['confirmed', 'completed'] }
+      paymentStatus: 'completed' // Only allow reviews for paid bookings
     })
     .populate('hostel', 'name location')
     .populate('room', 'roomNumber');
 
-    console.log('Found eligible bookings:', bookings.length);
-    
     res.status(200).json(bookings);
   } catch (error) {
-    console.error('Error in getEligibleBookings:', error);
     res.status(500).json({ 
       success: false,
       message: 'Failed to fetch eligible bookings',

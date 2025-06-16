@@ -14,7 +14,6 @@ const createReview = async (req, res) => {
       hostel: hostelId,
       user: userId,
       paymentStatus: 'completed',
-      status: { $in: ['confirmed', 'completed'] }
     });
 
     if (!booking) {
@@ -91,26 +90,39 @@ const respondToReview = async (req, res) => {
     res.status(500).json({ message: 'Failed to respond to review', error: error.message });
   }
 };
-// In your backend controller
-const getEligibleBookings = async (req, res) => {
+
+const getReviewStats = async (req, res) => {
   try {
-    const bookings = await Booking.find({
-      user: req.user.id,
-      hostel: req.params.hostelId,
-      paymentStatus: 'completed',
-      _id: { $nin: await Review.distinct('booking', { user: req.user.id }) }
-    });
+    const { hostelId } = req.params;
     
-    res.json(bookings);
+    // Get review count and average rating
+    const reviewCount = await Review.countDocuments({ hostel: hostelId });
+    
+    const averageResult = await Review.aggregate([
+      { $match: { hostel: hostelId } },
+      { $group: { _id: null, averageRating: { $avg: '$rating' } } }
+    ]);
+    
+    const averageRating = averageResult.length > 0 ? averageResult[0].averageRating : 0;
+
+    res.status(200).json({
+      success: true,
+      count: reviewCount,
+      averageRating: parseFloat(averageRating.toFixed(1))
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error getting review stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get review statistics',
+      error: error.message
+    });
   }
 };
-
 module.exports = {
   createReview,
   getHostelReviews,
   getUserReviews,
   respondToReview,
-  getEligibleBookings
+  getReviewStats
 };
