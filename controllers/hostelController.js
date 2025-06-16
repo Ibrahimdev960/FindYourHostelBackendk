@@ -233,52 +233,43 @@ const getHostelById = async (req, res) => {
     }
 };
 
+// In getAllHostels controller
 const getAllHostels = async (req, res) => {
-  console.log('🔍 Starting getAllHostels - Full Request Info:', {
-    headers: req.headers,
-    cookies: req.cookies,
-    user: req.user
-});
   try {
-    console.log('Starting getAllHostels process...');
-    console.log('User making request:', req.user);
-
-    // First ensure the user object is properly populated
-    if (!req.user) {
-      console.log('No authenticated user - showing only approved hostels');
-      const hostels = await Hostel.find({ status: 'approved' });
-      return res.json(hostels);
+    let hostelsQuery = Hostel.find();
+    
+    // For non-admin users, only show approved hostels
+    if (!req.user || req.user.role !== 'Admin') {
+      hostelsQuery = hostelsQuery.where('status').equals('approved');
     }
 
-    // For admin, show all hostels
-    if (req.user.role === 'Admin') {
-      const hostels = await Hostel.find();
-      console.log('Admin view - returning all hostels:', hostels.length);
-      return res.json(hostels);
-    }
-    
-    // For hosteller, show their own hostels (any status) + approved hostels from others
-    if (req.user.role === 'Hosteller') {
-      const hostels = await Hostel.find({
-        $or: [
-          { owner: req.user._id }, // Show all hostels owned by this hosteller (including pending)
-          { status: 'approved' }   // Plus all approved hostels from others
-        ]
-      }).sort({ status: 1 }); // Sort to show pending hostels first
-      console.log('Hosteller view - returning own hostels and approved:', hostels.length);
-      return res.json(hostels);
-    }
-    
-    // For everyone else, show only approved hostels
-    const hostels = await Hostel.find({ status: 'approved' });
-    console.log('Public view - returning approved hostels:', hostels.length);
-    res.json(hostels);
+    // Populate additional data and aggregate room counts
+    const hostels = await hostelsQuery
+      .lean()
+      .populate('owner', 'name email phone')
+      .exec();
+
+    // Get room counts and min prices for each hostel
+    const hostelsWithDetails = await Promise.all(hostels.map(async (hostel) => {
+      const rooms = await Room.find({ hostel: hostel._id });
+      const roomCount = rooms.length;
+      const minPrice = rooms.length > 0 
+        ? Math.min(...rooms.map(room => room.pricePerBed)) 
+        : null;
+      
+      return {
+        ...hostel,
+        roomCount,
+        minPrice,
+        // Calculate average rating if not already in model
+        rating: hostel.averageRating || 0,
+        reviewCount: hostel.reviewCount || 0
+      };
+    }));
+
+    res.json(hostelsWithDetails);
   } catch (error) {
-    console.error('Error in getAllHostels:', {
-      message: error.message,
-      stack: error.stack,
-      user: req.user
-    });
+    console.error('Error in getAllHostels:', error);
     res.status(500).json({ message: 'Error fetching hostels', error });
   }
 };

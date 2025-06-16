@@ -161,10 +161,66 @@ const getEligibleBookings = async (req, res) => {
   }
 };
 
+const getAllBookings = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, status, search } = req.query;
+    
+    // Build query
+    const query = {};
+    if (status) query.status = status;
+    if (search) {
+      query.$or = [
+        { 'hostel.name': { $regex: search, $options: 'i' } },
+        { 'user.name': { $regex: search, $options: 'i' } },
+        { 'user.email': { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Convert page and limit to numbers
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+
+    // Get total count of documents
+    const total = await Booking.countDocuments(query);
+
+    // Calculate total pages
+    const totalPages = Math.ceil(total / limitNum);
+
+    // Get paginated data with proper population
+    const bookings = await Booking.find(query)
+      .populate([
+        { path: 'hostel', select: 'name location images owner' },
+        { path: 'room', select: 'roomNumber pricePerBed' },
+        { path: 'user', select: 'name email phone' }
+      ])
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
+
+    res.status(200).json({
+      success: true,
+      totalBookings: total,
+      totalPages,
+      currentPage: pageNum,
+      bookings
+    });
+  } catch (error) {
+    console.error('Error fetching all bookings:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error fetching bookings',
+      error: error.message 
+    });
+  }
+};
+
 
 module.exports = { 
   bookHostel,
   cancelBooking, 
   getBookings,
   getHostelOwnerBookings,
-  getEligibleBookings};
+  getEligibleBookings,
+  getAllBookings
+
+};
