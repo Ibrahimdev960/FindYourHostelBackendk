@@ -322,20 +322,28 @@ getHostelCount = async (req, res) => {
 };
 
 // Get hostels near a location
-getHostelsNearby =  async (req, res) => {
+// Example backend controller
+const getHostelsNearby = async (req, res) => {
   try {
-    const { longitude, latitude, maxDistance = 5000 } = req.query;
+    const { latitude, longitude, maxDistance = 5000 } = req.query;
     
-    if (!longitude || !latitude) {
-      return res.status(400).json({ message: 'Longitude and latitude are required' });
+    // Validate coordinates
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    
+    if (isNaN(lat) || isNaN(lng)) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid coordinates' 
+      });
     }
 
     const hostels = await Hostel.find({
-      location: {
+      'location.coordinates': {
         $near: {
           $geometry: {
             type: "Point",
-            coordinates: [parseFloat(longitude), parseFloat(latitude)]
+            coordinates: [lng, lat] // Note: MongoDB expects [longitude, latitude]
           },
           $maxDistance: parseInt(maxDistance)
         }
@@ -343,13 +351,18 @@ getHostelsNearby =  async (req, res) => {
       status: 'approved'
     });
 
-    res.json(hostels);
+    res.json({
+      success: true,
+      data: hostels
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Error in getHostelsNearby:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error fetching nearby hostels' 
+    });
   }
 };
-
-
 
 module.exports = {
   addHostel,

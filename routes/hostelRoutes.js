@@ -26,7 +26,7 @@ router.get('/search', searchHostels);
 router.get('/pending', protect, adminAuth, getPendingHostels);
 router.get('/count', protect, adminAuth, getHostelCount);
 router.get('/:id', getHostelById);
-router.get('/owner/:id', protect, getHostelsNearby); // Get hostel by owner ID
+router.get('/nearby', protect, getHostelsNearby);
 
 
 router.patch('/approve/:id', protect, adminAuth, approveHostel);
