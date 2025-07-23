@@ -11,7 +11,7 @@ const sendVerificationEmail = async (to, token) => {
     },
   });
 
-  const verificationLink = `${process.env.BASE_URL}/api/users/verify-email?token=${token}`;
+  const verificationLink = `${process.env.BASE_URL}/users/verify-email?token=${token}`;
 
   const mailOptions = {
     from: `"FindYourHostel" <${process.env.EMAIL_USER}>`,
